@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2014 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -28,9 +28,11 @@
 */
 
 #include "../include/zmq.h"
-#include "../include/zmq_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+// keys are arbitrary but must match remote_lat.cpp
+const char server_prvkey[] = "{X}#>t#jRGaQ}gMhv=30r(Mw+87YGs+5%kh=i@f8";
 
 int main (int argc, char *argv [])
 {
@@ -44,16 +46,20 @@ int main (int argc, char *argv [])
     zmq_msg_t msg;
     void *watch;
     unsigned long elapsed;
-    unsigned long throughput;
+    double throughput;
     double megabits;
+    int curve = 0;
 
-    if (argc != 4) {
-        printf ("usage: local_thr <bind-to> <message-size> <message-count>\n");
+    if (argc != 4 && argc != 5) {
+        printf ("usage: local_thr <bind-to> <message-size> <message-count> [<enable_curve>]\n");
         return 1;
     }
     bind_to = argv [1];
     message_size = atoi (argv [2]);
     message_count = atoi (argv [3]);
+    if (argc >= 5 && atoi (argv [4])) {
+        curve = 1;
+    }
 
     ctx = zmq_init (1);
     if (!ctx) {
@@ -69,6 +75,19 @@ int main (int argc, char *argv [])
 
     //  Add your socket options here.
     //  For example ZMQ_RATE, ZMQ_RECOVERY_IVL and ZMQ_MCAST_LOOP for PGM.
+    if (curve) {
+        rc = zmq_setsockopt (s, ZMQ_CURVE_SECRETKEY, server_prvkey, sizeof(server_prvkey));
+        if (rc != 0) {
+            printf ("error in zmq_setsockoopt: %s\n", zmq_strerror (errno));
+            return -1;
+        }
+        int server = 1;
+        rc = zmq_setsockopt (s, ZMQ_CURVE_SERVER, &server, sizeof(int));
+        if (rc != 0) {
+            printf ("error in zmq_setsockoopt: %s\n", zmq_strerror (errno));
+            return -1;
+        }
+    }
 
     rc = zmq_bind (s, bind_to);
     if (rc != 0) {
@@ -116,9 +135,9 @@ int main (int argc, char *argv [])
         return -1;
     }
 
-    throughput = (unsigned long)
+    throughput = 
         ((double) message_count / (double) elapsed * 1000000);
-    megabits = (double) (throughput * message_size * 8) / 1000000;
+    megabits = ((double) throughput * message_size * 8) / 1000000;
 
     printf ("message size: %d [B]\n", (int) message_size);
     printf ("message count: %d\n", (int) message_count);
@@ -131,9 +150,9 @@ int main (int argc, char *argv [])
         return -1;
     }
 
-    rc = zmq_term (ctx);
+    rc = zmq_ctx_term (ctx);
     if (rc != 0) {
-        printf ("error in zmq_term: %s\n", zmq_strerror (errno));
+        printf ("error in zmq_ctx_term: %s\n", zmq_strerror (errno));
         return -1;
     }
 

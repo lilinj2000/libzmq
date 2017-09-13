@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -27,13 +27,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "platform.hpp"
+#include "precompiled.hpp"
 
 #if defined ZMQ_HAVE_OPENPGM
-
-#ifdef ZMQ_HAVE_WINDOWS
-#include "windows.hpp"
-#endif
 
 #include <stdlib.h>
 
@@ -43,6 +39,7 @@
 #include "err.hpp"
 #include "wire.hpp"
 #include "stdint.hpp"
+#include "macros.hpp"
 
 zmq::pgm_sender_t::pgm_sender_t (io_thread_t *parent_,
       const options_t &options_) :
@@ -77,6 +74,7 @@ int zmq::pgm_sender_t::init (bool udp_encapsulation_, const char *network_)
 
 void zmq::pgm_sender_t::plug (io_thread_t *io_thread_, session_base_t *session_)
 {
+    LIBZMQ_UNUSED (io_thread_);
     //  Allocate 2 fds for PGM socket.
     fd_t downlink_socket_fd = retired_fd;
     fd_t uplink_socket_fd = retired_fd;
@@ -138,6 +136,11 @@ void zmq::pgm_sender_t::restart_output ()
 void zmq::pgm_sender_t::restart_input ()
 {
     zmq_assert (false);
+}
+
+const char *zmq::pgm_sender_t::get_endpoint () const
+{
+    return "";
 }
 
 zmq::pgm_sender_t::~pgm_sender_t ()

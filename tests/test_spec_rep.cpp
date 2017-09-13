@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -30,7 +30,7 @@
 #include "testutil.hpp"
 
 const char *bind_address = 0;
-const char *connect_address = 0;
+char connect_address[MAX_SOCKET_STRING];
 
 void test_fair_queue_in (void *ctx)
 {
@@ -42,6 +42,9 @@ void test_fair_queue_in (void *ctx)
     assert (rc == 0);
 
     rc = zmq_bind (rep, bind_address);
+    assert (rc == 0);
+    size_t len = MAX_SOCKET_STRING;
+    rc = zmq_getsockopt (rep, ZMQ_LAST_ENDPOINT, connect_address, &len);
     assert (rc == 0);
 
     const size_t services = 5;
@@ -56,6 +59,8 @@ void test_fair_queue_in (void *ctx)
         rc = zmq_connect (reqs [peer], connect_address);
         assert (rc == 0);
     }
+
+    msleep (SETTLE_TIME);
 
     s_send_seq (reqs [0], "A", SEQ_END);
     s_recv_seq (rep, "A", SEQ_END);
@@ -94,8 +99,7 @@ void test_fair_queue_in (void *ctx)
         close_zero_linger (reqs [peer]);
 
     // Wait for disconnects.
-    rc = zmq_poll (0, 0, 100);
-    assert (rc == 0);
+    msleep (SETTLE_TIME);
 }
 
 void test_envelope (void *ctx)
@@ -104,6 +108,9 @@ void test_envelope (void *ctx)
     assert (rep);
 
     int rc = zmq_bind (rep, bind_address);
+    assert (rc == 0);
+    size_t len = MAX_SOCKET_STRING;
+    rc = zmq_getsockopt (rep, ZMQ_LAST_ENDPOINT, connect_address, &len);
     assert (rc == 0);
 
     void *dealer = zmq_socket (ctx, ZMQ_DEALER);
@@ -128,8 +135,7 @@ void test_envelope (void *ctx)
     close_zero_linger (dealer);
 
     // Wait for disconnects.
-    rc = zmq_poll (0, 0, 100);
-    assert (rc == 0);
+    msleep (SETTLE_TIME);
 }
 
 int main (void)
@@ -138,12 +144,10 @@ int main (void)
     void *ctx = zmq_ctx_new ();
     assert (ctx);
 
-    const char *binds [] = { "inproc://a", "tcp://127.0.0.1:5555" };
-    const char *connects [] = { "inproc://a", "tcp://localhost:5555" };
+    const char *binds [] = { "inproc://a", "tcp://127.0.0.1:*" };
 
     for (int transport = 0; transport < 2; ++transport) {
         bind_address = binds [transport];
-        connect_address = connects [transport];
 
         // SHALL receive incoming messages from its peers using a fair-queuing
         // strategy.

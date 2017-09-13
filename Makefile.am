@@ -37,6 +37,9 @@ src_libzmq_la_SOURCES = \
 	src/ctx.hpp \
 	src/curve_client.cpp \
 	src/curve_client.hpp \
+	src/curve_client_tools.hpp \
+	src/curve_mechanism_base.cpp \
+	src/curve_mechanism_base.hpp \
 	src/curve_server.cpp \
 	src/curve_server.hpp \
 	src/dbuffer.hpp \
@@ -45,6 +48,10 @@ src_libzmq_la_SOURCES = \
 	src/decoder.hpp \
 	src/devpoll.cpp \
 	src/devpoll.hpp \
+	src/dgram.cpp \
+	src/dgram.hpp \
+	src/dish.cpp \
+	src/dish.hpp \
 	src/dist.cpp \
 	src/dist.hpp \
 	src/encoder.hpp \
@@ -55,6 +62,8 @@ src_libzmq_la_SOURCES = \
 	src/fd.hpp \
 	src/fq.cpp \
 	src/fq.hpp \
+	src/gather.cpp \
+	src/gather.hpp \
 	src/gssapi_mechanism_base.cpp \
 	src/gssapi_mechanism_base.hpp \
 	src/gssapi_client.cpp \
@@ -83,12 +92,15 @@ src_libzmq_la_SOURCES = \
 	src/lb.cpp \
 	src/lb.hpp \
 	src/likely.hpp \
+	src/macros.hpp \
 	src/mailbox.cpp \
 	src/mailbox.hpp \
 	src/mailbox_safe.cpp \
 	src/mailbox_safe.hpp \
 	src/mechanism.cpp \
 	src/mechanism.hpp  \
+	src/mechanism_base.cpp \
+	src/mechanism_base.hpp  \
 	src/metadata.cpp \
 	src/metadata.hpp \
 	src/msg.cpp \
@@ -126,6 +138,10 @@ src_libzmq_la_SOURCES = \
 	src/poller.hpp \
 	src/poller_base.cpp \
 	src/poller_base.hpp \
+	src/pollset.cpp \
+	src/pollset.hpp \
+	src/precompiled.cpp \
+	src/precompiled.hpp \
 	src/proxy.cpp \
 	src/proxy.hpp \
 	src/pub.cpp \
@@ -134,6 +150,8 @@ src_libzmq_la_SOURCES = \
 	src/pull.hpp \
 	src/push.cpp \
 	src/push.hpp \
+	src/radio.cpp \
+	src/radio.hpp \
 	src/random.cpp \
 	src/random.hpp \
 	src/raw_decoder.cpp \
@@ -148,6 +166,8 @@ src_libzmq_la_SOURCES = \
 	src/req.hpp \
 	src/router.cpp \
 	src/router.hpp \
+	src/scatter.cpp \
+	src/scatter.hpp \
 	src/select.cpp \
 	src/select.hpp \
 	src/server.cpp \
@@ -179,6 +199,8 @@ src_libzmq_la_SOURCES = \
 	src/tcp_listener.hpp \
 	src/thread.cpp \
 	src/thread.hpp \
+	src/timers.cpp \
+	src/timers.hpp \
 	src/tipc_address.cpp \
 	src/tipc_address.hpp \
 	src/tipc_connecter.cpp \
@@ -187,6 +209,10 @@ src_libzmq_la_SOURCES = \
 	src/tipc_listener.hpp \
 	src/trie.cpp \
 	src/trie.hpp \
+	src/udp_address.cpp \
+	src/udp_address.hpp \
+	src/udp_engine.cpp \
+	src/udp_engine.hpp \
 	src/v1_decoder.cpp \
 	src/v1_decoder.hpp \
 	src/v2_decoder.cpp \
@@ -196,10 +222,18 @@ src_libzmq_la_SOURCES = \
 	src/v2_encoder.cpp \
 	src/v2_encoder.hpp \
 	src/v2_protocol.hpp \
+	src/vmci.cpp \
+	src/vmci.hpp \
+	src/vmci_address.cpp \
+	src/vmci_address.hpp \
+	src/vmci_connecter.cpp \
+	src/vmci_connecter.hpp \
+	src/vmci_listener.cpp \
+	src/vmci_listener.hpp \
 	src/windows.hpp \
 	src/wire.hpp \
-	src/xpub.hpp \
 	src/xpub.cpp \
+	src/xpub.hpp \
 	src/xsub.cpp \
 	src/xsub.hpp \
 	src/ypipe.hpp \
@@ -208,11 +242,19 @@ src_libzmq_la_SOURCES = \
 	src/yqueue.hpp \
 	src/zmq.cpp \
 	src/zmq_utils.cpp \
-        src/decoder_allocators.hpp \
-        src/decoder_allocators.cpp \
-        src/socket_poller.hpp \
-        src/socket_poller.cpp
+	src/decoder_allocators.cpp \
+	src/decoder_allocators.hpp \
+	src/socket_poller.cpp \
+	src/socket_poller.hpp \
+	src/zap_client.cpp \
+	src/zap_client.hpp \
+	src/zmq_draft.h
 
+if USE_TWEETNACL
+src_libzmq_la_SOURCES += \
+	src/tweetnacl.c \
+	src/tweetnacl.h
+endif
 
 if ON_MINGW
 src_libzmq_la_LDFLAGS = \
@@ -249,11 +291,13 @@ endif
 endif
 endif
 
-src_libzmq_la_CPPFLAGS =
-src_libzmq_la_CXXFLAGS = @LIBZMQ_EXTRA_CXXFLAGS@
-src_libzmq_la_LIBADD =
+src_libzmq_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS) $(LIBUNWIND_CFLAGS)
+src_libzmq_la_CFLAGS = $(CODE_COVERAGE_CFLAGS) $(LIBUNWIND_CFLAGS)
+src_libzmq_la_CXXFLAGS = @LIBZMQ_EXTRA_CXXFLAGS@ $(CODE_COVERAGE_CXXFLAGS) \
+	$(LIBUNWIND_CFLAGS)
+src_libzmq_la_LIBADD = $(CODE_COVERAGE_LDFLAGS) $(LIBUNWIND_LIBS)
 
-if HAVE_SODIUM
+if USE_LIBSODIUM
 src_libzmq_la_CPPFLAGS += ${sodium_CFLAGS}
 src_libzmq_la_LIBADD += ${sodium_LIBS}
 endif
@@ -261,6 +305,11 @@ endif
 if HAVE_PGM
 src_libzmq_la_CPPFLAGS += ${pgm_CFLAGS}
 src_libzmq_la_LIBADD += ${pgm_LIBS}
+endif
+
+if BUILD_GSSAPI
+src_libzmq_la_CPPFLAGS += ${gssapi_krb5_CFLAGS}
+src_libzmq_la_LIBADD += ${gssapi_krb5_LIBS}
 endif
 
 if ENABLE_PERF
@@ -302,6 +351,7 @@ endif
 # tests
 #
 test_apps = \
+	tests/test_ancillaries \
 	tests/test_system \
 	tests/test_pair_inproc \
 	tests/test_pair_tcp \
@@ -335,7 +385,7 @@ test_apps = \
 	tests/test_ctx_destroy \
 	tests/test_security_null \
 	tests/test_security_plain \
-	tests/test_security_curve \
+	tests/test_security_zap \
 	tests/test_iov \
 	tests/test_spec_req \
 	tests/test_spec_rep \
@@ -351,8 +401,7 @@ test_apps = \
 	tests/test_proxy_single_socket \
 	tests/test_proxy_terminate \
 	tests/test_getsockopt_memset \
-	tests/test_many_sockets \
-	tests/test_ipc_wildcard \
+	tests/test_setsockopt \
 	tests/test_diffserv \
 	tests/test_connect_rid \
 	tests/test_bind_src_address \
@@ -362,13 +411,17 @@ test_apps = \
 	tests/test_xpub_manual \
 	tests/test_xpub_welcome_msg \
 	tests/test_atomics \
-	tests/test_client_server \
-	tests/test_thread_safe \
-	tests/test_socketopt_hwm \
+	tests/test_sockopt_hwm \
 	tests/test_heartbeats \
 	tests/test_stream_exceeds_buffer \
-	tests/test_thread_safe_polling \
-	tests/test_poller
+	tests/test_pub_invert_matching \
+	tests/test_base85 \
+	tests/test_bind_after_connect_tcp \
+	tests/test_sodium \
+	tests/test_socket_null
+
+tests_test_ancillaries_SOURCES = tests/test_ancillaries.cpp
+tests_test_ancillaries_LDADD = src/libzmq.la
 
 tests_test_system_SOURCES = tests/test_system.cpp
 tests_test_system_LDADD = src/libzmq.la
@@ -480,8 +533,11 @@ tests_test_security_null_LDADD = src/libzmq.la
 tests_test_security_plain_SOURCES = tests/test_security_plain.cpp
 tests_test_security_plain_LDADD = src/libzmq.la
 
-tests_test_security_curve_SOURCES = tests/test_security_curve.cpp
-tests_test_security_curve_LDADD = src/libzmq.la
+tests_test_security_zap_SOURCES = \
+	tests/test_security_zap.cpp \
+	tests/testutil_security.hpp \
+	tests/testutil.hpp
+tests_test_security_zap_LDADD = src/libzmq.la
 
 tests_test_spec_req_SOURCES = tests/test_spec_req.cpp
 tests_test_spec_req_LDADD = src/libzmq.la
@@ -528,9 +584,6 @@ tests_test_getsockopt_memset_LDADD = src/libzmq.la
 tests_test_many_sockets_SOURCES = tests/test_many_sockets.cpp
 tests_test_many_sockets_LDADD = src/libzmq.la
 
-tests_test_ipc_wildcard_SOURCES = tests/test_ipc_wildcard.cpp
-tests_test_ipc_wildcard_LDADD = src/libzmq.la
-
 tests_test_diffserv_SOURCES = tests/test_diffserv.cpp
 tests_test_diffserv_LDADD = src/libzmq.la
 
@@ -558,14 +611,11 @@ tests_test_xpub_welcome_msg_LDADD = src/libzmq.la
 tests_test_atomics_SOURCES = tests/test_atomics.cpp
 tests_test_atomics_LDADD = src/libzmq.la
 
-tests_test_client_server_SOURCES = tests/test_client_server.cpp
-tests_test_client_server_LDADD = src/libzmq.la
+tests_test_sockopt_hwm_SOURCES = tests/test_sockopt_hwm.cpp
+tests_test_sockopt_hwm_LDADD = src/libzmq.la
 
-tests_test_thread_safe_SOURCES = tests/test_thread_safe.cpp
-tests_test_thread_safe_LDADD = src/libzmq.la
-
-tests_test_socketopt_hwm_SOURCES = tests/test_sockopt_hwm.cpp
-tests_test_socketopt_hwm_LDADD = src/libzmq.la
+tests_test_setsockopt_SOURCES = tests/test_setsockopt.cpp
+tests_test_setsockopt_LDADD = src/libzmq.la
 
 tests_test_heartbeats_SOURCES = tests/test_heartbeats.cpp
 tests_test_heartbeats_LDADD = src/libzmq.la
@@ -573,24 +623,75 @@ tests_test_heartbeats_LDADD = src/libzmq.la
 tests_test_stream_exceeds_buffer_SOURCES = tests/test_stream_exceeds_buffer.cpp
 tests_test_stream_exceeds_buffer_LDADD = src/libzmq.la
 
-tests_test_thread_safe_polling_SOURCES = tests/test_thread_safe_polling.cpp
-tests_test_thread_safe_polling_LDADD = src/libzmq.la
+tests_test_pub_invert_matching_SOURCES = tests/test_pub_invert_matching.cpp
+tests_test_pub_invert_matching_LDADD = src/libzmq.la
 
-tests_test_poller_SOURCES = tests/test_poller.cpp
-tests_test_poller_LDADD = src/libzmq.la
+tests_test_bind_after_connect_tcp_SOURCES = tests/test_bind_after_connect_tcp.cpp
+tests_test_bind_after_connect_tcp_LDADD = src/libzmq.la
 
+tests_test_base85_SOURCES = tests/test_base85.cpp
+tests_test_base85_LDADD = src/libzmq.la
+
+tests_test_sodium_SOURCES = tests/test_sodium.cpp
+tests_test_sodium_LDADD = src/libzmq.la
+
+tests_test_socket_null_SOURCES = tests/test_socket_null.cpp
+tests_test_socket_null_LDADD = src/libzmq.la
+
+if HAVE_CURVE
+
+test_apps += \
+	tests/test_security_curve
+
+tests_test_security_curve_SOURCES = \
+	tests/test_security_curve.cpp \
+	tests/testutil_security.hpp \
+	tests/testutil.hpp \
+	src/curve_client_tools.hpp \
+	src/clock.hpp \
+	src/clock.cpp \
+	src/random.hpp \
+	src/random.cpp \
+	src/err.hpp \
+	src/err.cpp
+
+if USE_TWEETNACL
+tests_test_security_curve_SOURCES += \
+	src/tweetnacl.c
+endif
+
+tests_test_security_curve_LDADD = \
+	src/libzmq.la $(LIBUNWIND_LIBS)
+tests_test_security_curve_CPPFLAGS = \
+	${LIBUNWIND_CFLAGS}
+
+if USE_LIBSODIUM
+tests_test_security_curve_CPPFLAGS += \
+	${sodium_CFLAGS}
+tests_test_security_curve_LDADD += \
+	${sodium_LIBS}
+endif
+
+endif
 
 if !ON_MINGW
 if !ON_CYGWIN
 test_apps += \
 	tests/test_shutdown_stress \
+	tests/test_ipc_wildcard \
 	tests/test_pair_ipc \
 	tests/test_reqrep_ipc \
+	tests/test_use_fd_ipc \
+	tests/test_use_fd_tcp \
+	tests/test_zmq_poll_fd \
 	tests/test_timeo \
 	tests/test_filter_ipc
 
 tests_test_shutdown_stress_SOURCES = tests/test_shutdown_stress.cpp
 tests_test_shutdown_stress_LDADD = src/libzmq.la
+
+tests_test_ipc_wildcard_SOURCES = tests/test_ipc_wildcard.cpp
+tests_test_ipc_wildcard_LDADD = src/libzmq.la
 
 tests_test_pair_ipc_SOURCES = \
 	tests/test_pair_ipc.cpp \
@@ -608,12 +709,27 @@ tests_test_timeo_LDADD = src/libzmq.la
 tests_test_filter_ipc_SOURCES = tests/test_filter_ipc.cpp
 tests_test_filter_ipc_LDADD = src/libzmq.la
 
+tests_test_use_fd_ipc_SOURCES = \
+	tests/test_use_fd_ipc.cpp \
+	tests/testutil.hpp
+tests_test_use_fd_ipc_LDADD = src/libzmq.la
+
+tests_test_use_fd_tcp_SOURCES = \
+	tests/test_use_fd_tcp.cpp \
+	tests/testutil.hpp
+tests_test_use_fd_tcp_LDADD = src/libzmq.la
+
+tests_test_zmq_poll_fd_SOURCES = tests/test_zmq_poll_fd.cpp
+tests_test_zmq_poll_fd_LDADD = src/libzmq.la
+
 if HAVE_FORK
+if !VALGRIND_ENABLED
 test_apps += tests/test_fork
 
 tests_test_fork_SOURCES = tests/test_fork.cpp
 tests_test_fork_LDADD = src/libzmq.la
 
+endif
 endif
 endif
 endif
@@ -655,12 +771,71 @@ tests_test_term_endpoint_tipc_LDADD = src/libzmq.la
 
 endif
 
+if BUILD_GSSAPI
+test_apps += tests/test_security_gssapi
+
+tests_test_security_gssapi_SOURCES = tests/test_security_gssapi.cpp
+tests_test_security_gssapi_LDADD = src/libzmq.la
+
+endif
+
 if ON_LINUX
-test_apps += tests/test_abstract_ipc
+test_apps += tests/test_abstract_ipc \
+		tests/test_many_sockets
 
 tests_test_abstract_ipc_SOURCES = tests/test_abstract_ipc.cpp
 tests_test_abstract_ipc_LDADD = src/libzmq.la
 
+endif
+
+if HAVE_VMCI
+test_apps += test_pair_vmci test_reqrep_vmci
+
+test_pair_vmci_SOURCES = tests/test_pair_vmci.cpp
+test_pair_vmci_LDADD = libzmq.la
+test_pair_vmci_LDFLAGS = @LIBZMQ_VMCI_LDFLAGS@
+test_pair_vmci_CXXFLAGS = @LIBZMQ_VMCI_CXXFLAGS@
+
+test_reqrep_vmci_SOURCES = tests/test_reqrep_vmci.cpp
+test_reqrep_vmci_LDADD = libzmq.la
+test_reqrep_vmci_LDFLAGS = @LIBZMQ_VMCI_LDFLAGS@
+test_reqrep_vmci_CXXFLAGS = @LIBZMQ_VMCI_CXXFLAGS@
+
+endif
+
+if ENABLE_DRAFTS
+test_apps += tests/test_poller \
+	tests/test_client_server \
+	tests/test_thread_safe \
+	tests/test_timers \
+	tests/test_radio_dish \
+	tests/test_udp \
+	tests/test_scatter_gather \
+	tests/test_dgram
+
+tests_test_poller_SOURCES = tests/test_poller.cpp
+tests_test_poller_LDADD = src/libzmq.la
+
+tests_test_client_server_SOURCES = tests/test_client_server.cpp
+tests_test_client_server_LDADD = src/libzmq.la
+
+tests_test_thread_safe_SOURCES = tests/test_thread_safe.cpp
+tests_test_thread_safe_LDADD = src/libzmq.la
+
+tests_test_timers_SOURCES = tests/test_timers.cpp
+tests_test_timers_LDADD = src/libzmq.la
+
+tests_test_radio_dish_SOURCES = tests/test_radio_dish.cpp
+tests_test_radio_dish_LDADD = src/libzmq.la
+
+tests_test_udp_SOURCES = tests/test_udp.cpp
+tests_test_udp_LDADD = src/libzmq.la
+
+tests_test_scatter_gather_SOURCES = tests/test_scatter_gather.cpp
+tests_test_scatter_gather_LDADD = src/libzmq.la
+
+tests_test_dgram_SOURCES = tests/test_dgram.cpp
+tests_test_dgram_LDADD = src/libzmq.la
 endif
 
 check_PROGRAMS = ${test_apps}
@@ -673,13 +848,20 @@ if !ON_LINUX
 XFAIL_TESTS += tests/test_abstract_ipc
 endif
 
+if ON_GNU
+XFAIL_TESTS += test_ipc_wildcard \
+		test_term_endpoint
+endif
+
 EXTRA_DIST = \
+	FindSodium.cmake \
 	CMakeLists.txt \
 	autogen.sh	\
 	version.sh	\
-	MAINTAINERS	\
 	src/libzmq.pc.cmake.in \
 	src/libzmq.vers \
+	src/version.rc.in \
+	tests/CMakeLists.txt \
 	tools/curve_keygen.cpp
 
 MAINTAINERCLEANFILES = \
@@ -687,6 +869,8 @@ MAINTAINERCLEANFILES = \
 	$(srcdir)/autom4te.cache \
 	$(srcdir)/configure \
 	`find "$(srcdir)" -type f -name Makefile.in -print`
+
+@CODE_COVERAGE_RULES@
 
 dist-hook:
 	-rm $(distdir)/src/platform.hpp
@@ -702,8 +886,10 @@ dist-hook:
 	else \
 		echo A git clone is required to generate a ChangeLog >&2; \
 	fi
-	-cp $(top_srcdir)/builds/redhat/zeromq.spec $(distdir)/zeromq.spec
 
 maintainer-clean-local:
 	-rm -rf $(top_srcdir)/config
 
+@VALGRIND_CHECK_RULES@
+
+VALGRIND_SUPPRESSIONS_FILES = builds/valgrind/valgrind.supp

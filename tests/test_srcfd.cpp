@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2017 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -32,9 +32,8 @@
 #define MSG_SIZE 20
 
 #ifdef _WIN32
-#include <Winsock2.h>
-#include <Ws2tcpip.h>
-#define usleep(a) Sleep((a) / 1000)
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -44,6 +43,8 @@
 int main (void)
 {
     int rc;
+    size_t len = MAX_SOCKET_STRING;
+    char my_endpoint[MAX_SOCKET_STRING];
 
     setup_test_environment();
     //  Create the infrastructure
@@ -55,13 +56,17 @@ int main (void)
     void *req = zmq_socket (ctx, ZMQ_REQ);
     assert (req);
 
-    rc = zmq_bind(rep, "tcp://127.0.0.1:5560");
+    rc = zmq_bind(rep, "tcp://127.0.0.1:*");
     assert (rc == 0);
 
-    rc = zmq_connect(req, "tcp://127.0.0.1:5560");
+    rc = zmq_getsockopt(rep, ZMQ_LAST_ENDPOINT, my_endpoint, &len);
+    assert (rc == 0);
+
+    rc = zmq_connect(req, my_endpoint);
     assert (rc == 0);
 
     char tmp[MSG_SIZE];
+    memset (tmp, 0, MSG_SIZE);
     zmq_send(req, tmp, MSG_SIZE, 0);
 
     zmq_msg_t msg;
@@ -89,7 +94,8 @@ int main (void)
     assert (rc == 0);
 
     char host [NI_MAXHOST];
-    rc = getnameinfo ((struct sockaddr*) &ss, addrlen, host, sizeof host, NULL, 0, NI_NUMERICHOST);
+    rc = getnameinfo ((struct sockaddr*) &ss, addrlen, host, sizeof host,
+            NULL, 0, NI_NUMERICHOST);
     assert (rc == 0);
 
     // assert it is localhost which connected
@@ -101,12 +107,17 @@ int main (void)
     assert (rc == 0);
 
     // sleep a bit for the socket to be freed
-    usleep(30000);
+    msleep (SETTLE_TIME);
 
     // getting name from closed socket will fail
     rc = getpeername (srcFd, (struct sockaddr*) &ss, &addrlen);
+#ifdef ZMQ_HAVE_WINDOWS
+    assert (rc == SOCKET_ERROR);
+    assert (WSAGetLastError() == WSAENOTSOCK);
+#else
     assert (rc == -1);
     assert (errno == EBADF);
+#endif
 
     rc = zmq_ctx_term (ctx);
     assert (rc == 0);

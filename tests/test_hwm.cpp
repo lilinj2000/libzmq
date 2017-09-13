@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -53,9 +53,12 @@ int test_defaults ()
 
     // Send until we block
     int send_count = 0;
-    while (send_count < MAX_SENDS && zmq_send (connect_socket, NULL, 0, ZMQ_DONTWAIT) == 0)
+    while (send_count < MAX_SENDS
+           && zmq_send (connect_socket, NULL, 0, ZMQ_DONTWAIT) == 0)
         ++send_count;
 
+    msleep (SETTLE_TIME);
+    
     // Now receive all sent messages
     int recv_count = 0;
     while (zmq_recv (bind_socket, NULL, 0, ZMQ_DONTWAIT) == 0)

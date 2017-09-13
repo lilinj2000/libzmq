@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2017 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -30,7 +30,7 @@
 #include "testutil.hpp"
 
 const char *bind_address = 0;
-const char *connect_address = 0;
+char connect_address[MAX_SOCKET_STRING];
 
 void test_round_robin_out (void *ctx)
 {
@@ -38,6 +38,9 @@ void test_round_robin_out (void *ctx)
     assert (dealer);
 
     int rc = zmq_bind (dealer, bind_address);
+    assert (rc == 0);
+    size_t len = MAX_SOCKET_STRING;
+    rc = zmq_getsockopt (dealer, ZMQ_LAST_ENDPOINT, connect_address, &len);
     assert (rc == 0);
 
     const size_t services = 5;
@@ -55,8 +58,7 @@ void test_round_robin_out (void *ctx)
     }
 
     // Wait for connections.
-    rc = zmq_poll (0, 0, 100);
-    assert (rc == 0);
+    msleep (SETTLE_TIME);
 
     // Send all requests
     for (size_t i = 0; i < services; ++i)
@@ -78,8 +80,7 @@ void test_round_robin_out (void *ctx)
         close_zero_linger (rep [peer]);
 
     // Wait for disconnects.
-    rc = zmq_poll (0, 0, 100);
-    assert (rc == 0);
+    msleep (SETTLE_TIME);
 }
 
 void test_fair_queue_in (void *ctx)
@@ -92,6 +93,9 @@ void test_fair_queue_in (void *ctx)
     assert (rc == 0);
 
     rc = zmq_bind (receiver, bind_address);
+    assert (rc == 0);
+    size_t len = MAX_SOCKET_STRING;
+    rc = zmq_getsockopt (receiver, ZMQ_LAST_ENDPOINT, connect_address, &len);
     assert (rc == 0);
 
     const size_t services = 5;
@@ -122,8 +126,7 @@ void test_fair_queue_in (void *ctx)
         s_send_seq (senders [peer], "B", SEQ_END);
 
     // Wait for data.
-    rc = zmq_poll (0, 0, 50);
-    assert (rc == 0);
+    msleep (SETTLE_TIME);
 
     // handle the requests
     for (size_t peer = 0; peer < services; ++peer)
@@ -138,8 +141,7 @@ void test_fair_queue_in (void *ctx)
         close_zero_linger (senders [peer]);
 
     // Wait for disconnects.
-    rc = zmq_poll (0, 0, 100);
-    assert (rc == 0);
+    msleep (SETTLE_TIME);
 }
 
 void test_destroy_queue_on_disconnect (void *ctx)
@@ -148,6 +150,9 @@ void test_destroy_queue_on_disconnect (void *ctx)
     assert (A);
 
     int rc = zmq_bind (A, bind_address);
+    assert (rc == 0);
+    size_t len = MAX_SOCKET_STRING;
+    rc = zmq_getsockopt (A, ZMQ_LAST_ENDPOINT, connect_address, &len);
     assert (rc == 0);
 
     void *B = zmq_socket (ctx, ZMQ_DEALER);
@@ -201,8 +206,7 @@ void test_destroy_queue_on_disconnect (void *ctx)
     close_zero_linger (B);
 
     // Wait for disconnects.
-    rc = zmq_poll (0, 0, 100);
-    assert (rc == 0);
+    msleep (SETTLE_TIME);
 }
 
 void test_block_on_send_no_peers (void *ctx)
@@ -232,12 +236,10 @@ int main (void)
     void *ctx = zmq_ctx_new ();
     assert (ctx);
 
-    const char *binds [] = { "inproc://a", "tcp://127.0.0.1:5555" };
-    const char *connects [] = { "inproc://a", "tcp://localhost:5555" };
+    const char *binds [] = { "inproc://a", "tcp://127.0.0.1:*" };
 
     for (int transports = 0; transports < 2; ++transports) {
         bind_address = binds [transports];
-        connect_address = connects [transports];
 
         // SHALL route outgoing messages to available peers using a round-robin
         // strategy.

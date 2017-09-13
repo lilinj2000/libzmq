@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -27,16 +27,12 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "precompiled.hpp"
 #include "macros.hpp"
-#include "platform.hpp"
 
 #if defined ZMQ_HAVE_OPENPGM
 
 #include <new>
-
-#ifdef ZMQ_HAVE_WINDOWS
-#include "windows.hpp"
-#endif
 
 #include "pgm_receiver.hpp"
 #include "session_base.hpp"
@@ -45,7 +41,7 @@
 #include "wire.hpp"
 #include "err.hpp"
 
-zmq::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_, 
+zmq::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_,
       const options_t &options_) :
     io_object_t (parent_),
     has_rx_timer (false),
@@ -71,6 +67,7 @@ int zmq::pgm_receiver_t::init (bool udp_encapsulation_, const char *network_)
 void zmq::pgm_receiver_t::plug (io_thread_t *io_thread_,
     session_base_t *session_)
 {
+    LIBZMQ_UNUSED (io_thread_);
     //  Retrieve PGM fds and start polling.
     fd_t socket_fd = retired_fd;
     fd_t waiting_pipe_fd = retired_fd;
@@ -154,6 +151,11 @@ void zmq::pgm_receiver_t::restart_input ()
 
     active_tsi = NULL;
     in_event ();
+}
+
+const char *zmq::pgm_receiver_t::get_endpoint () const
+{
+    return "";
 }
 
 void zmq::pgm_receiver_t::in_event ()

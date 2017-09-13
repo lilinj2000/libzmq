@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -30,10 +30,23 @@
 #ifndef __ZMQ_SOCKET_POLLER_HPP_INCLUDED__
 #define __ZMQ_SOCKET_POLLER_HPP_INCLUDED__
 
+#include "poller.hpp"
+
+#if defined ZMQ_POLL_BASED_ON_POLL && !defined ZMQ_HAVE_WINDOWS
+#include <poll.h>
+#endif
+
+#if defined ZMQ_HAVE_WINDOWS
+#include "windows.hpp"
+#else
+#include <unistd.h>
+#endif
+
 #include <vector>
 #include <algorithm>
 
-#include "../include/zmq.h"
+#include "socket_base.hpp"
+#include "signaler.hpp"
 
 namespace zmq
 {
@@ -46,55 +59,83 @@ namespace zmq
 
         typedef struct event_t
         {
-            void *socket;
-#if defined _WIN32
-            SOCKET fd;
-#else
-            int fd;
-#endif
-            void *user_data; 
+            socket_base_t *socket;
+            fd_t fd;
+            void *user_data;
+            short events;
         } event_t;
 
-        int add_socket (void *socket, void *user_data);
-        int remove_socket (void *socket);
-#if defined _WIN32
-        int add_fd (SOCKET fd, void *user_data);
-        int remove_fd (SOCKET fd);
-#else
-        int add_fd (int fd, void *user_data);
-        int remove_fd (int fd);
-#endif
+        int add (socket_base_t *socket, void *user_data, short events);
+        int modify (socket_base_t *socket, short events);
+        int remove (socket_base_t *socket);
 
-        int wait (event_t *event, long timeout);
+        int add_fd (fd_t fd, void *user_data, short events);
+        int modify_fd (fd_t fd, short events);
+        int remove_fd (fd_t fd);
+
+        int wait (event_t *event, int n_events, long timeout);
+
+        inline int size (void) { return static_cast <int> (items.size ()); };
 
         //  Return false if object is not a socket.
         bool check_tag ();
 
     private:
+        void zero_trail_events (zmq::socket_poller_t::event_t *events_,
+                                                          int n_events_,
+                                                          int found);
+#if defined ZMQ_POLL_BASED_ON_POLL
+        int check_events (zmq::socket_poller_t::event_t *events_,
+                                                          int n_events_);
+#elif defined ZMQ_POLL_BASED_ON_SELECT
+        int check_events (zmq::socket_poller_t::event_t *events_, int n_events_,
+                                                          fd_set& inset,
+                                                          fd_set& outset,
+                                                          fd_set& errset);
+#endif
+        int adjust_timeout (zmq::clock_t& clock, long timeout_, uint64_t& now,
+                                                          uint64_t& end,
+                                                          bool& first_pass);
         void rebuild ();
 
         //  Used to check whether the object is a socket_poller.
         uint32_t tag;
 
-        //  Pollfd used for thread safe sockets polling
-        void *pollfd;
+        //  Signaler used for thread safe sockets polling
+        signaler_t* signaler;
+
+        typedef struct item_t {
+            socket_base_t *socket;
+            fd_t fd;
+            void *user_data;
+            short events;
+#if defined ZMQ_POLL_BASED_ON_POLL
+            int  pollfd_index;
+#endif
+        } item_t;
 
         //  List of sockets
-        typedef std::vector <event_t> events_t;
-        events_t events;
+        typedef std::vector <item_t> items_t;
+        items_t items;
 
-        //  Current zmq_poll set
-        zmq_pollitem_t *poll_set;
+        //  Does the pollset needs rebuilding?
+        bool need_rebuild;
 
-        //  Matching set to events
-        event_t *poll_events;
+        //  Should the signaler be used for the thread safe polling?
+        bool use_signaler;
 
         //  Size of the pollset
         int poll_size;
 
-        //  Does the pollset needs rebuilding?
-        bool need_rebuild;
-        
+#if defined ZMQ_POLL_BASED_ON_POLL
+        pollfd *pollfds;
+#elif defined ZMQ_POLL_BASED_ON_SELECT
+        fd_set pollset_in;
+        fd_set pollset_out;
+        fd_set pollset_err;
+        zmq::fd_t maxfd;
+#endif
+
         socket_poller_t (const socket_poller_t&);
         const socket_poller_t &operator = (const socket_poller_t&);
     };

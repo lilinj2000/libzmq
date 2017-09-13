@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -48,6 +48,9 @@ int main (void)
 #endif
     assert (zmq_ctx_get (ctx, ZMQ_IO_THREADS) == ZMQ_IO_THREADS_DFLT);
     assert (zmq_ctx_get (ctx, ZMQ_IPV6) == 0);
+#if defined (ZMQ_BUILD_DRAFT_AP)
+    assert (zmq_ctx_get (ctx, ZMQ_MSG_T_SIZE) == sizeof (zmq_msg_t));
+#endif
     
     rc = zmq_ctx_set (ctx, ZMQ_IPV6, true);
     assert (zmq_ctx_get (ctx, ZMQ_IPV6) == 1);

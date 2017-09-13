@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -27,9 +27,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "precompiled.hpp"
+#include "macros.hpp"
 #include "thread.hpp"
 #include "err.hpp"
-#include "platform.hpp"
 
 #ifdef ZMQ_HAVE_WINDOWS
 
@@ -72,11 +73,20 @@ void zmq::thread_t::stop ()
 void zmq::thread_t::setSchedulingParameters(int priority_, int schedulingPolicy_)
 {
     // not implemented
+    LIBZMQ_UNUSED (priority_);
+    LIBZMQ_UNUSED (schedulingPolicy_);
+}
+
+void zmq::thread_t::setThreadName(const char *name_)
+{
+    // not implemented
+    LIBZMQ_UNUSED (name_);
 }
 
 #else
 
 #include <signal.h>
+#include <unistd.h>
 
 extern "C"
 {
@@ -114,10 +124,15 @@ void zmq::thread_t::stop ()
 
 void zmq::thread_t::setSchedulingParameters(int priority_, int schedulingPolicy_)
 {
-#if !defined ZMQ_HAVE_ZOS && !defined ZMQ_HAVE_HPUX
+#if defined _POSIX_THREAD_PRIORITY_SCHEDULING && _POSIX_THREAD_PRIORITY_SCHEDULING >= 0
     int policy = 0;
     struct sched_param param;
 
+#if _POSIX_THREAD_PRIORITY_SCHEDULING == 0 && defined _SC_THREAD_PRIORITY_SCHEDULING
+    if (sysconf(_SC_THREAD_PRIORITY_SCHEDULING) < 0) {
+        return;
+    }
+#endif
     int rc = pthread_getschedparam(descriptor, &policy, &param);
     posix_assert (rc);
 
@@ -131,14 +146,49 @@ void zmq::thread_t::setSchedulingParameters(int priority_, int schedulingPolicy_
         policy = schedulingPolicy_;
     }
 
+#ifdef __NetBSD__
+    if(policy == SCHED_OTHER) param.sched_priority = -1;
+#endif
+
     rc = pthread_setschedparam(descriptor, policy, &param);
+
+#ifdef __FreeBSD_kernel__
+    // If this feature is unavailable at run-time, don't abort.
+    if(rc == ENOSYS) return;
+#endif
+
     posix_assert (rc);
+#else
+
+    LIBZMQ_UNUSED (priority_);
+    LIBZMQ_UNUSED (schedulingPolicy_);
+#endif
+}
+
+void zmq::thread_t::setThreadName(const char *name_)
+{
+/* The thread name is a cosmetic string, added to ease debugging of
+ * multi-threaded applications. It is not a big issue if this value
+ * can not be set for any reason (such as Permission denied in some
+ * cases where the application changes its EUID, etc.) The value of
+ * "int rc" is retained where available, to help debuggers stepping
+ * through code to see its value - but otherwise it is ignored.
+ */
+    if (!name_)
+        return;
+
+#if defined(ZMQ_HAVE_PTHREAD_SETNAME_1)
+    int rc = pthread_setname_np(name_);
+    if(rc) return;
+#elif defined(ZMQ_HAVE_PTHREAD_SETNAME_2)
+    int rc = pthread_setname_np(descriptor, name_);
+    if(rc) return;
+#elif defined(ZMQ_HAVE_PTHREAD_SETNAME_3)
+    int rc = pthread_setname_np(descriptor, name_, NULL);
+    if(rc) return;
+#elif defined(ZMQ_HAVE_PTHREAD_SET_NAME)
+    pthread_set_name_np(descriptor, name_);
 #endif
 }
 
 #endif
-
-
-
-
-

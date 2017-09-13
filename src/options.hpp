@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -37,10 +37,12 @@
 #include "stddef.h"
 #include "stdint.hpp"
 #include "tcp_address.hpp"
-#include "../include/zmq.h"
 
 #if defined ZMQ_HAVE_SO_PEERCRED || defined ZMQ_HAVE_LOCAL_PEERCRED
 #include <sys/types.h>
+#endif
+#ifdef ZMQ_HAVE_LOCAL_PEERCRED
+#include <sys/ucred.h>
 #endif
 
 //  Normal base 256 key is 32 bytes
@@ -53,6 +55,8 @@ namespace zmq
     struct options_t
     {
         options_t ();
+
+        int set_curve_key(uint8_t * destination, const void * optval_, size_t optvallen_);
 
         int setsockopt (int option_, const void *optval_, size_t optvallen_);
         int getsockopt (int option_, void *optval_, size_t *optvallen_) const;
@@ -79,6 +83,10 @@ namespace zmq
         // Sets the time-to-live field in every multicast packet sent.
         int multicast_hops;
 
+        // Sets the maximum transport data unit size in every multicast
+        // packet sent.
+        int multicast_maxtpdu;
+
         // SO_SNDBUF and SO_RCVBUF to be passed to underlying transport sockets.
         int sndbuf;
         int rcvbuf;
@@ -100,7 +108,7 @@ namespace zmq
         //  Maximum interval in milliseconds beyond which TCP will timeout
         //  retransmitted packets.
         //  Default 0 (unused)
-        int tcp_retransmit_timeout;
+        int tcp_maxrt;
 
         //  Minimum interval between attempts to reconnect, in milliseconds.
         //  Default 100ms
@@ -191,6 +199,10 @@ namespace zmq
         std::string gss_principal;
         std::string gss_service_principal;
 
+	//  Name types GSSAPI principals
+	int gss_principal_nt;
+	int gss_service_principal_nt;
+
         //  If true, gss encryption will be disabled
         bool gss_plaintext;
 
@@ -217,6 +229,20 @@ namespace zmq
         //  Time in milliseconds to wait for a PING response before disconnecting
         int heartbeat_timeout;
 
+#       if defined ZMQ_HAVE_VMCI
+        uint64_t vmci_buffer_size;
+        uint64_t vmci_buffer_min_size;
+        uint64_t vmci_buffer_max_size;
+        int vmci_connect_timeout;
+#       endif
+
+        //  When creating a new ZMQ socket, if this option is set the value
+        //  will be used as the File Descriptor instead of allocating a new
+        //  one via the socket () system call.
+        int use_fd;
+
+        // Device to bind the underlying socket to, eg. VRF or interface
+        std::string bound_device;
     };
 }
 

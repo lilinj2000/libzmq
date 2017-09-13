@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -27,6 +27,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "precompiled.hpp"
 #include "macros.hpp"
 #include "session_base.hpp"
 #include "i_engine.hpp"
@@ -37,13 +38,17 @@
 #include "ipc_connecter.hpp"
 #include "tipc_connecter.hpp"
 #include "socks_connecter.hpp"
+#include "vmci_connecter.hpp"
 #include "pgm_sender.hpp"
 #include "pgm_receiver.hpp"
 #include "address.hpp"
 #include "norm_engine.hpp"
+#include "udp_engine.hpp"
 
 #include "ctx.hpp"
 #include "req.hpp"
+#include "radio.hpp"
+#include "dish.hpp"
 
 zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
     bool active_, class socket_base_t *socket_, const options_t &options_,
@@ -55,6 +60,14 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
         s = new (std::nothrow) req_session_t (io_thread_, active_,
             socket_, options_, addr_);
         break;
+    case ZMQ_RADIO:
+        s = new (std::nothrow) radio_session_t (io_thread_, active_,
+            socket_, options_, addr_);
+        break;
+    case ZMQ_DISH:
+        s = new (std::nothrow) dish_session_t (io_thread_, active_,
+            socket_, options_, addr_);
+            break;
     case ZMQ_DEALER:
     case ZMQ_REP:
     case ZMQ_ROUTER:
@@ -68,6 +81,9 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
     case ZMQ_STREAM:
     case ZMQ_SERVER:
     case ZMQ_CLIENT:
+    case ZMQ_GATHER:
+    case ZMQ_SCATTER:
+    case ZMQ_DGRAM:
         s = new (std::nothrow) session_base_t (io_thread_, active_,
             socket_, options_, addr_);
         break;
@@ -95,6 +111,11 @@ zmq::session_base_t::session_base_t (class io_thread_t *io_thread_,
     has_linger_timer (false),
     addr (addr_)
 {
+}
+
+const char *zmq::session_base_t::get_endpoint () const
+{
+    return engine->get_endpoint ();
 }
 
 zmq::session_base_t::~session_base_t ()
@@ -167,13 +188,10 @@ int zmq::session_base_t::read_zap_msg (msg_t *msg_)
 
 int zmq::session_base_t::write_zap_msg (msg_t *msg_)
 {
-    if (zap_pipe == NULL) {
+    if (zap_pipe == NULL || !zap_pipe->write (msg_)) {
         errno = ENOTCONN;
         return -1;
     }
-
-    const bool ok = zap_pipe->write (msg_);
-    zmq_assert (ok);
 
     if ((msg_->flags () & msg_t::more) == 0)
         zap_pipe->flush ();
@@ -302,21 +320,25 @@ void zmq::session_base_t::process_plug ()
         start_connecting (false);
 }
 
+//  This functions can return 0 on success or -1 and errno=ECONNREFUSED if ZAP
+//  is not setup (IE: inproc://zeromq.zap.01 does not exist in the same context)
+//  or it aborts on any other error. In other words, either ZAP is not
+//  configured or if it is configured it MUST be configured correctly and it
+//  MUST work, otherwise authentication cannot be guaranteed and it would be a
+//  security flaw.
 int zmq::session_base_t::zap_connect ()
 {
-    zmq_assert (zap_pipe == NULL);
+    if (zap_pipe != NULL)
+        return 0;
 
     endpoint_t peer = find_endpoint ("inproc://zeromq.zap.01");
     if (peer.socket == NULL) {
         errno = ECONNREFUSED;
         return -1;
     }
-    if (peer.options.type != ZMQ_REP
-    &&  peer.options.type != ZMQ_ROUTER
-    &&  peer.options.type != ZMQ_SERVER) {
-        errno = ECONNREFUSED;
-        return -1;
-    }
+    zmq_assert (peer.options.type == ZMQ_REP ||
+            peer.options.type == ZMQ_ROUTER ||
+            peer.options.type == ZMQ_SERVER);
 
     //  Create a bi-directional pipe that will connect
     //  session with zap socket.
@@ -352,7 +374,7 @@ bool zmq::session_base_t::zap_enabled ()
 {
     return (
          options.mechanism != ZMQ_NULL ||
-        (options.mechanism == ZMQ_NULL && options.zap_domain.length() > 0)
+         !options.zap_domain.empty()
     );
 }
 
@@ -411,14 +433,22 @@ void zmq::session_base_t::engine_error (
 
     switch (reason) {
         case stream_engine_t::timeout_error:
+            /* FALLTHROUGH */
         case stream_engine_t::connection_error:
-            if (active)
+            if (active) {
                 reconnect ();
-            else
-                terminate ();
-            break;
+                break;
+            }
+            /* FALLTHROUGH */
         case stream_engine_t::protocol_error:
-            terminate ();
+            if (pending) {
+                if (pipe)
+                    pipe->terminate (0);
+                if (zap_pipe)
+                    zap_pipe->terminate (0);
+            } else {
+                terminate ();
+            }
             break;
     }
 
@@ -487,11 +517,16 @@ void zmq::session_base_t::reconnect ()
     //  and reestablish later on
     if (pipe && options.immediate == 1
         && addr->protocol != "pgm" && addr->protocol != "epgm"
-        && addr->protocol != "norm") {
+        && addr->protocol != "norm" && addr->protocol != "udp") {
         pipe->hiccup ();
         pipe->terminate (false);
         terminating_pipes.insert (pipe);
         pipe = NULL;
+
+        if (has_linger_timer) {
+            cancel_timer (linger_timer_id);
+            has_linger_timer = false;
+        }
     }
 
     reset ();
@@ -502,7 +537,7 @@ void zmq::session_base_t::reconnect ()
 
     //  For subscriber sockets we hiccup the inbound pipe, which will cause
     //  the socket object to resend all the subscriptions.
-    if (pipe && (options.type == ZMQ_SUB || options.type == ZMQ_XSUB))
+    if (pipe && (options.type == ZMQ_SUB || options.type == ZMQ_XSUB || options.type == ZMQ_DISH))
         pipe->hiccup ();
 }
 
@@ -520,7 +555,7 @@ void zmq::session_base_t::start_connecting (bool wait_)
     if (addr->protocol == "tcp") {
         if (!options.socks_proxy_address.empty()) {
             address_t *proxy_address = new (std::nothrow)
-                address_t ("tcp", options.socks_proxy_address);
+                address_t ("tcp", options.socks_proxy_address, this->get_ctx ());
             alloc_assert (proxy_address);
             socks_connecter_t *connecter =
                 new (std::nothrow) socks_connecter_t (
@@ -555,6 +590,36 @@ void zmq::session_base_t::start_connecting (bool wait_)
         return;
     }
 #endif
+
+    if (addr->protocol == "udp") {
+        zmq_assert (options.type == ZMQ_DISH || options.type == ZMQ_RADIO || options.type == ZMQ_DGRAM);
+
+        udp_engine_t* engine = new (std::nothrow) udp_engine_t (options);
+        alloc_assert (engine);
+
+        bool recv = false;
+        bool send = false;
+
+        if (options.type == ZMQ_RADIO) {
+            send = true;
+            recv = false;
+        }
+        else if (options.type == ZMQ_DISH) {
+            send = false;
+            recv = true;
+        }
+        else if (options.type == ZMQ_DGRAM) {
+            send = true;
+            recv = true;
+        }
+
+        int rc = engine->init (addr, send, recv);
+        errno_assert (rc == 0);
+
+        send_attach (this, engine);
+
+        return;
+    }
 
 #ifdef ZMQ_HAVE_OPENPGM
 
@@ -630,6 +695,15 @@ void zmq::session_base_t::start_connecting (bool wait_)
     }
 #endif // ZMQ_HAVE_NORM
 
+#if defined ZMQ_HAVE_VMCI
+    if (addr->protocol == "vmci") {
+        vmci_connecter_t *connecter = new (std::nothrow) vmci_connecter_t (
+                io_thread, this, options, addr, wait_);
+        alloc_assert (connecter);
+        launch_child (connecter);
+        return;
+    }
+#endif
+
     zmq_assert (false);
 }
-

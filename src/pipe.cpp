@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -27,6 +27,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "precompiled.hpp"
 #include <new>
 #include <stddef.h>
 
@@ -82,8 +83,8 @@ zmq::pipe_t::pipe_t (object_t *parent_, upipe_t *inpipe_, upipe_t *outpipe_,
     out_active (true),
     hwm (outhwm_),
     lwm (compute_lwm (inhwm_)),
-    inhwmboost(0),
-    outhwmboost(0),
+    inhwmboost(-1),
+    outhwmboost(-1),
     msgs_read (0),
     msgs_written (0),
     peers_msgs_read (0),
@@ -91,6 +92,7 @@ zmq::pipe_t::pipe_t (object_t *parent_, upipe_t *inpipe_, upipe_t *outpipe_,
     sink (NULL),
     state (active),
     delay (true),
+    routing_id(0),
     conflate (conflate_)
 {
 }
@@ -375,6 +377,11 @@ void zmq::pipe_t::process_pipe_term_ack ()
     delete this;
 }
 
+void zmq::pipe_t::process_pipe_hwm (int inhwm_, int outhwm_)
+{
+    set_hwms(inhwm_, outhwm_);
+}
+
 void zmq::pipe_t::set_nodelay ()
 {
     this->delay = false;
@@ -388,12 +395,12 @@ void zmq::pipe_t::terminate (bool delay_)
     //  If terminate was already called, we can ignore the duplicate invocation.
     if (state == term_req_sent1 || state == term_req_sent2) {
         return;
-	}
+    }
     //  If the pipe is in the final phase of async termination, it's going to
     //  closed anyway. No need to do anything special here.
     else if (state == term_ack_sent) {
         return;
-	}
+    }
     //  The simple sync termination case. Ask the peer to terminate and wait
     //  for the ack.
     else if (state == active) {
@@ -403,6 +410,8 @@ void zmq::pipe_t::terminate (bool delay_)
     //  There are still pending messages available, but the user calls
     //  'terminate'. We can act as if all the pending messages were read.
     else if (state == waiting_for_delimiter && !delay) {
+        //  Drop any unfinished outbound messages.
+        rollback ();
         outpipe = NULL;
         send_pipe_term_ack (peer);
         state = term_ack_sent;
@@ -420,7 +429,7 @@ void zmq::pipe_t::terminate (bool delay_)
     //  There are no other states.
     else {
         zmq_assert (false);
-	}
+    }
 
     //  Stop outbound flow of messages.
     out_active = false;
@@ -460,14 +469,9 @@ int zmq::pipe_t::compute_lwm (int hwm_)
     //     result in low performance.
     //
     //  Given the 3. it would be good to keep HWM and LWM as far apart as
-    //  possible to reduce the thread switching overhead to almost zero,
-    //  say HWM-LWM should be max_wm_delta.
-    //
-    //  That done, we still we have to account for the cases where
-    //  HWM < max_wm_delta thus driving LWM to negative numbers.
-    //  Let's make LWM 1/2 of HWM in such cases.
-    int result = (hwm_ > max_wm_delta * 2) ?
-        hwm_ - max_wm_delta : (hwm_ + 1) / 2;
+    //  possible to reduce the thread switching overhead to almost zero.
+    //  Let's make LWM 1/2 of HWM.
+    int result = (hwm_ + 1) / 2;
 
     return result;
 }
@@ -511,14 +515,14 @@ void zmq::pipe_t::hiccup ()
 
 void zmq::pipe_t::set_hwms (int inhwm_, int outhwm_)
 {
-    int in = inhwm_ + inhwmboost;
-    int out = outhwm_ + outhwmboost;
+    int in = inhwm_ + (inhwmboost > 0 ? inhwmboost : 0);
+    int out = outhwm_ + (outhwmboost > 0 ? outhwmboost : 0);
 
     // if either send or recv side has hwm <= 0 it means infinite so we should set hwms infinite
-    if (inhwm_ <= 0 || inhwmboost <= 0)
+    if (inhwm_ <= 0 || inhwmboost == 0)
         in = 0;
 
-    if (outhwm_ <= 0 || outhwmboost <= 0)
+    if (outhwm_ <= 0 || outhwmboost == 0)
         out = 0;
 
     lwm = compute_lwm(in);
@@ -535,4 +539,9 @@ bool zmq::pipe_t::check_hwm () const
 {
     bool full = hwm > 0 && msgs_written - peers_msgs_read >= uint64_t (hwm);
     return( !full );
+}
+
+void zmq::pipe_t::send_hwms_to_peer(int inhwm_, int outhwm_)
+{
+    send_pipe_hwm(peer, inhwm_, outhwm_);
 }

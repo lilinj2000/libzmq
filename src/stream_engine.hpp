@@ -1,5 +1,5 @@
 /*
-    Copyright (c) 2007-2015 Contributors as noted in the AUTHORS file
+    Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file
 
     This file is part of libzmq, the ZeroMQ core engine in C++.
 
@@ -39,7 +39,6 @@
 #include "i_decoder.hpp"
 #include "options.hpp"
 #include "socket_base.hpp"
-#include "../include/zmq.h"
 #include "metadata.hpp"
 
 namespace zmq
@@ -80,6 +79,7 @@ namespace zmq
         void restart_input ();
         void restart_output ();
         void zap_msg_available ();
+        const char *get_endpoint () const;
 
         //  i_poll_events interface implementation.
         void in_event ();
@@ -116,8 +116,6 @@ namespace zmq
         int push_one_then_decode_and_push (msg_t *msg_);
 
         void mechanism_ready ();
-
-        int write_subscription_msg (msg_t *msg_);
 
         size_t add_property (unsigned char *ptr,
             const char *name, const void *value, size_t value_len);
